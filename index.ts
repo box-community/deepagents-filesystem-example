@@ -3,9 +3,9 @@
  *
  * This example demonstrates using 3 different storage backends with a Deep Agent:
  *
- * 1. Local Filesystem (FilesystemBackend) - For workspace files at /workspace/
- * 2. SQLite Database (SQLiteBackend) - For persistent memories at /memories/
- * 3. S3-compatible Storage (S3Backend) - For documentation at /docs/
+ * 1. SQLite Database (SQLiteBackend) - For persistent memories at /memories/
+ * 2. S3-compatible Storage (S3Backend) - For documentation at /docs/
+ * 3. Local Filesystem (FilesystemBackend) - For workspace files at /workspace/
  *
  * Before running, seed the data with: bun run seed
  */
