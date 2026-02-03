@@ -3,7 +3,7 @@
  *
  * This example demonstrates using 3 different storage backends with a Deep Agent:
  *
- * 1. SQLite Database (SQLiteBackend) - For persistent memories at /memories/
+ * 1. SQL Database (SQLiteBackend) - For persistent memories at /memories/
  * 2. S3-compatible Storage (S3Backend) - For documentation at /docs/
  * 3. Local Filesystem (FilesystemBackend) - For workspace files at /workspace/
  *
