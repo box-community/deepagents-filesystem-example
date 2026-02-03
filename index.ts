@@ -186,24 +186,8 @@ Make it professional and persuasive!`;
     console.log("=".repeat(60) + "\n");
 
     const proposalFile = Bun.file("./workspace/sarah-chen-proposal.md");
-    if (await proposalFile.exists()) {
-      const proposalContent = await proposalFile.text();
-      console.log(proposalContent);
-    } else {
-      console.log("(Proposal file not found - checking workspace...)");
-      const { readdirSync } = await import("fs");
-      const files = readdirSync("./workspace").filter((f) => f !== ".gitkeep");
-      if (files.length > 0) {
-        console.log("\nFiles in /workspace/:", files);
-        // Try to read the first markdown file
-        const mdFile = files.find((f) => f.endsWith(".md"));
-        if (mdFile) {
-          const content = await Bun.file(`./workspace/${mdFile}`).text();
-          console.log(`\nContents of ${mdFile}:\n`);
-          console.log(content);
-        }
-      }
-    }
+    const proposalContent = await proposalFile.text();
+    console.log(proposalContent);
   } catch (error) {
     console.error("Error running agent:", error);
   }
