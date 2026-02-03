@@ -58,7 +58,6 @@ const createCompositeBackend: BackendFactory = (stateAndStore) => {
 
   const sqliteBackend = new SQLiteBackend({
     dbPath: "./data/memories.db",
-    namespace: "agent-memories",
   });
 
   const s3Backend = new S3Backend({
