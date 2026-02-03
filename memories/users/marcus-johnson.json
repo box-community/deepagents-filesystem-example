@@ -1,0 +1,14 @@
+{
+  "id": "user-002",
+  "name": "Marcus Johnson",
+  "email": "mjohnson@cityhospital.example.org",
+  "role": "Chief Technology Officer",
+  "company": "City General Hospital",
+  "industry": "Healthcare",
+  "team_size": 45,
+  "interests": ["HIPAA compliance", "patient data security", "interoperability"],
+  "current_tools": ["Epic EHR", "legacy systems"],
+  "budget": "enterprise",
+  "decision_timeline": "Q2 2025",
+  "requirements": ["HIPAA", "SOC2", "on-premise option"]
+}

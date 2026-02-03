@@ -1,0 +1,30 @@
+{
+  "name": "deepagent-sandbox-example",
+  "version": "1.0.0",
+  "description": "Deep Agents example showcasing virtual filesystem backends",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "start": "bun run index.ts",
+    "seed": "bun run seed.ts",
+    "demo": "bun run demo-backends.ts"
+  },
+  "keywords": ["deepagents", "langchain", "virtual-filesystem", "ai-agents"],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.800.0",
+    "@langchain/anthropic": "^1.3.13",
+    "@langchain/core": "^1.1.18",
+    "@langchain/langgraph": "^1.1.3",
+    "@langchain/openai": "^1.2.4",
+    "deepagents": "^1.6.2",
+    "langchain": "^1.2.16",
+    "minimatch": "^10.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}
