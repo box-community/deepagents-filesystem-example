@@ -25,13 +25,12 @@ import { MemorySaver } from "@langchain/langgraph";
 // Configuration from environment
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const S3_BUCKET = process.env.AWS_S3_BUCKET;
-const S3_ENDPOINT = process.env.AWS_S3_ENDPOINT;
 const S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID;
 const S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY;
 
-if (!S3_ACCESS_KEY || !S3_SECRET_KEY || !S3_ENDPOINT || !S3_BUCKET) {
+if (!S3_ACCESS_KEY || !S3_SECRET_KEY || !S3_BUCKET) {
   console.error(
-    "Error: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_ENDPOINT, and AWS_S3_BUCKET are required"
+    "Error: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_S3_BUCKET are required"
   );
   process.exit(1);
 }
@@ -61,15 +60,14 @@ const createCompositeBackend: BackendFactory = (stateAndStore) => {
   });
 
   const s3Backend = new S3Backend({
-    bucket: S3_BUCKET!,
+    bucket: S3_BUCKET,
     prefix: "docs",
-    endpoint: S3_ENDPOINT,
     forcePathStyle: false,
     clientConfig: {
       region: "us-west-2",
       credentials: {
-        accessKeyId: S3_ACCESS_KEY!,
-        secretAccessKey: S3_SECRET_KEY!,
+        accessKeyId: S3_ACCESS_KEY,
+        secretAccessKey: S3_SECRET_KEY,
       },
     },
   });
