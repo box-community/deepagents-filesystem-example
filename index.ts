@@ -92,8 +92,8 @@ Organized by company: /docs/acme-corp/, /docs/nexus-health/, /docs/greenleaf-ana
 
 ### /memories/ (SQLite Database - Customer Data)
 Contains customer profiles and conversation history:
-- /memories/users/ - Customer profiles (JSON)
-- /memories/history/ - Conversation history (Markdown)
+- /users/{name}.json → User profile from users table
+- /history/{name}.md → Conversation history from conversations table
 
 ### /workspace/ (Local Filesystem - Output)
 Use this to write generated proposals, reports, and other output files.
