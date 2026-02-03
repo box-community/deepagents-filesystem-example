@@ -65,17 +65,21 @@ bun run start
 | GreenLeaf Analytics | company-info.md, pricing.md |
 | EduTech Pro | company-info.md, pricing.md |
 
-### Customer Data (`./memories/`)
+### Customer Data (SQLite Database)
 
-| Customer | Role | Company | Industry |
-|----------|------|---------|----------|
-| Sarah Chen | Engineering Manager | TechStartup Inc | SaaS |
-| Marcus Johnson | CTO | City General Hospital | Healthcare |
-| Elena Rodriguez | Sustainability Director | SustainableCo | Manufacturing |
-| David Kim | Director of Online Learning | West Coast CC | Education |
-| Priya Sharma | VP of Engineering | FinTech Innovations | Finance |
+Customer data is stored in a **proper relational database** with `users` and `conversations` tables. The `SQLiteBackend` synthesizes a virtual filesystem from the database:
 
-Each customer has a profile JSON and conversation history Markdown file.
+| Customer | Role | Company | Industry | Conversations |
+|----------|------|---------|----------|---------------|
+| Sarah Chen | Engineering Manager | TechStartup Inc | SaaS | 4 |
+| Marcus Johnson | CTO | City General Hospital | Healthcare | 4 |
+| Elena Rodriguez | Sustainability Director | SustainableCo | Manufacturing | 4 |
+| David Kim | Director of Online Learning | West Coast CC | Education | 4 |
+| Priya Sharma | VP of Engineering | FinTech Innovations | Finance | 5 |
+
+**Virtual file mapping:**
+- `/memories/users/{name}.json` → Generated from `users` table
+- `/memories/history/{name}.md` → Generated from `conversations` table
 
 ## Scripts
 
@@ -104,33 +108,34 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 ```
 deepagent-sandbox-example/
 ├── backends/
-│   ├── sqlite-backend.ts   # SQLite implementation
+│   ├── sqlite-backend.ts   # SQLite → Virtual filesystem
 │   └── s3-backend.ts       # S3 implementation
 ├── s3/                     # Seed data for S3
 │   ├── acme-corp/
 │   ├── nexus-health/
 │   ├── greenleaf-analytics/
 │   └── edutech-pro/
-├── memories/               # Seed data for SQLite
-│   ├── users/             # Customer profiles
-│   └── history/           # Conversation histories
 ├── workspace/             # Agent output (gitignored)
 ├── data/                  # SQLite database (gitignored)
-├── seed.ts               # Seed script
+│   └── memories.db        # Users + conversations tables
+├── seed.ts               # Seed script (loads data into DB + S3)
 ├── index.ts              # Main agent demo
 └── demo-backends.ts      # Backend test script
 ```
 
 ## How It Works
 
-1. **Seeding**: `bun run seed` reads files from `./s3/` and `./memories/` and uploads them to S3 and SQLite respectively.
+1. **Seeding**: `bun run seed` uploads files from `./s3/` to S3, and inserts structured data into SQLite tables (`users`, `conversations`).
 
-2. **Agent Execution**: The agent receives a prompt to generate a proposal for a specific customer.
+2. **Virtual Filesystem**: The `SQLiteBackend` synthesizes files from database queries:
+   - `ls /memories/users/` → Queries `SELECT slug FROM users` → Returns `sarah-chen.json`, etc.
+   - `read /memories/users/sarah-chen.json` → Queries user data → Returns formatted JSON
+   - `read /memories/history/sarah-chen.md` → Joins `users` + `conversations` → Returns Markdown
 
-3. **Data Access**: The agent uses filesystem tools (`ls`, `read_file`, `write_file`) which route to different backends based on path:
-   - `/docs/*` → S3
-   - `/memories/*` → SQLite
-   - `/workspace/*` → Local filesystem
+3. **Agent Execution**: The agent uses filesystem tools (`ls`, `read_file`) which route to backends based on path:
+   - `/docs/*` → S3 (real files)
+   - `/memories/*` → SQLite (virtual files from database)
+   - `/workspace/*` → Local filesystem (output)
 
 4. **Output**: The agent writes the generated proposal to `/workspace/`.
 
@@ -144,9 +149,33 @@ deepagent-sandbox-example/
 
 ### Add a New Customer
 
-1. Create `./memories/users/customer-name.json`
-2. Create `./memories/history/customer-name-history.md`
-3. Run `bun run seed`
+Add a new user object to the `USERS` array in `seed.ts`:
+
+```typescript
+{
+  slug: "new-customer",
+  name: "New Customer",
+  email: "new@example.com",
+  role: "CTO",
+  company: "Example Corp",
+  industry: "Tech",
+  team_size: 20,
+  interests: ["automation"],
+  current_tools: ["GitHub"],
+  budget: "enterprise",
+  decision_timeline: "Q1 2025",
+  requirements: null,
+  conversations: [
+    {
+      date: "2024-03-01",
+      title: "Initial Call",
+      notes: ["Discussed requirements", "Very interested"],
+    },
+  ],
+}
+```
+
+Then run `bun run seed`.
 
 ## License
 

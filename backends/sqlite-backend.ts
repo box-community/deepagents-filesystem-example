@@ -1,8 +1,13 @@
 /**
  * SQLite Backend for Deep Agents Virtual Filesystem
  *
- * This backend stores files in a SQLite database using Bun's built-in SQLite driver.
- * Great for persistent storage with full SQL querying capabilities.
+ * This backend presents a relational database as a virtual filesystem.
+ * Data is stored in proper database tables, but exposed to the agent
+ * as files (JSON for profiles, Markdown for history).
+ *
+ * Virtual file structure:
+ * - /users/{name}.json → User profile from users table
+ * - /history/{name}.md → Conversation history from conversations table
  */
 import { Database } from "bun:sqlite";
 import type {
@@ -13,130 +18,246 @@ import type {
   WriteResult,
   EditResult,
 } from "deepagents";
-import { minimatch } from "minimatch";
 
 export interface SQLiteBackendOptions {
   /** Path to the SQLite database file */
   dbPath: string;
-  /** Optional namespace for multi-tenancy */
-  namespace?: string;
+}
+
+interface User {
+  id: number;
+  slug: string;
+  name: string;
+  email: string;
+  role: string;
+  company: string;
+  industry: string;
+  team_size: number;
+  interests: string; // JSON array
+  current_tools: string; // JSON array
+  budget: string;
+  decision_timeline: string;
+  requirements: string | null; // JSON array
+  created_at: string;
+  updated_at: string;
+}
+
+interface Conversation {
+  id: number;
+  user_id: number;
+  date: string;
+  title: string;
+  notes: string; // JSON array of bullet points
+  created_at: string;
 }
 
 export class SQLiteBackend implements BackendProtocol {
   private db: Database;
-  private namespace: string;
 
   constructor(options: SQLiteBackendOptions) {
     this.db = new Database(options.dbPath, { create: true });
-    this.namespace = options.namespace || "default";
     this.initializeSchema();
   }
 
   private initializeSchema(): void {
+    // Users table
     this.db.run(`
-      CREATE TABLE IF NOT EXISTS files (
+      CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        namespace TEXT NOT NULL,
-        path TEXT NOT NULL,
-        content TEXT NOT NULL,
-        is_dir INTEGER NOT NULL DEFAULT 0,
-        size INTEGER NOT NULL DEFAULT 0,
+        slug TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL,
+        company TEXT NOT NULL,
+        industry TEXT NOT NULL,
+        team_size INTEGER NOT NULL,
+        interests TEXT NOT NULL DEFAULT '[]',
+        current_tools TEXT NOT NULL DEFAULT '[]',
+        budget TEXT NOT NULL,
+        decision_timeline TEXT NOT NULL,
+        requirements TEXT DEFAULT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        modified_at TEXT NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(namespace, path)
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
 
+    // Conversations table
     this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_files_namespace_path
-      ON files(namespace, path)
+      CREATE TABLE IF NOT EXISTS conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        title TEXT NOT NULL,
+        notes TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
     `);
+
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_users_slug ON users(slug)`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id)`);
   }
 
   /**
-   * Normalize path to ensure it starts with /
+   * Convert a name to a slug (filename)
    */
-  private normalizePath(path: string): string {
-    if (!path.startsWith("/")) {
-      path = "/" + path;
+  private nameToSlug(name: string): string {
+    return name.toLowerCase().replace(/\s+/g, "-");
+  }
+
+  /**
+   * Convert a slug back to extract user info
+   */
+  private slugToPath(slug: string, type: "user" | "history"): string {
+    if (type === "user") {
+      return `/users/${slug}.json`;
     }
-    // Remove trailing slash unless it's the root
-    if (path.length > 1 && path.endsWith("/")) {
-      path = path.slice(0, -1);
+    return `/history/${slug}.md`;
+  }
+
+  /**
+   * Parse a virtual path to determine what data to fetch
+   */
+  private parsePath(path: string): { type: "user" | "history" | "root" | "dir"; slug?: string } | null {
+    if (path === "/" || path === "") {
+      return { type: "root" };
     }
-    return path;
+    if (path === "/users" || path === "/users/") {
+      return { type: "dir" };
+    }
+    if (path === "/history" || path === "/history/") {
+      return { type: "dir" };
+    }
+
+    const userMatch = path.match(/^\/users\/([^/]+)\.json$/);
+    if (userMatch) {
+      return { type: "user", slug: userMatch[1] };
+    }
+
+    const historyMatch = path.match(/^\/history\/([^/]+)\.md$/);
+    if (historyMatch) {
+      return { type: "history", slug: historyMatch[1] };
+    }
+
+    return null;
+  }
+
+  /**
+   * Generate JSON content for a user profile
+   */
+  private userToJson(user: User): string {
+    return JSON.stringify(
+      {
+        id: user.slug,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        company: user.company,
+        industry: user.industry,
+        team_size: user.team_size,
+        interests: JSON.parse(user.interests),
+        current_tools: JSON.parse(user.current_tools),
+        budget: user.budget,
+        decision_timeline: user.decision_timeline,
+        requirements: user.requirements ? JSON.parse(user.requirements) : undefined,
+      },
+      null,
+      2
+    );
+  }
+
+  /**
+   * Generate Markdown content for conversation history
+   */
+  private conversationsToMarkdown(userName: string, conversations: Conversation[]): string {
+    let md = `# Conversation History: ${userName}\n`;
+
+    for (const conv of conversations) {
+      md += `\n## ${conv.date} - ${conv.title}\n`;
+      const notes = JSON.parse(conv.notes) as string[];
+      for (const note of notes) {
+        md += `- ${note}\n`;
+      }
+    }
+
+    return md;
   }
 
   /**
    * List files and directories at the given path
    */
   lsInfo(path: string): FileInfo[] {
-    path = this.normalizePath(path);
+    const parsed = this.parsePath(path);
+    if (!parsed) return [];
 
-    // For root, list all top-level entries
-    const prefix = path === "/" ? "/" : path + "/";
+    if (parsed.type === "root") {
+      return [
+        { path: "/users/", is_dir: true, size: 0 },
+        { path: "/history/", is_dir: true, size: 0 },
+      ];
+    }
 
-    const stmt = this.db.prepare(`
-      SELECT path, is_dir, size, modified_at
-      FROM files
-      WHERE namespace = ? AND (
-        path LIKE ? AND path NOT LIKE ?
-      )
-      ORDER BY path
-    `);
+    // List all users as files
+    const users = this.db.prepare("SELECT slug, name, updated_at FROM users ORDER BY name").all() as User[];
 
-    // Match direct children only
-    const directChildPattern = prefix === "/" ? "/%" : prefix + "%";
-    const excludeNested =
-      prefix === "/" ? "/%/%" : prefix + "%/%";
+    if (path === "/users" || path === "/users/") {
+      return users.map((u) => ({
+        path: `/users/${u.slug}.json`,
+        is_dir: false,
+        size: 0,
+        modified_at: u.updated_at,
+      }));
+    }
 
-    const rows = stmt.all(
-      this.namespace,
-      directChildPattern,
-      excludeNested
-    ) as Array<{
-      path: string;
-      is_dir: number;
-      size: number;
-      modified_at: string;
-    }>;
+    if (path === "/history" || path === "/history/") {
+      return users.map((u) => ({
+        path: `/history/${u.slug}.md`,
+        is_dir: false,
+        size: 0,
+        modified_at: u.updated_at,
+      }));
+    }
 
-    return rows.map((row) => ({
-      path: row.path,
-      isDir: Boolean(row.is_dir),
-      size: row.size,
-      modifiedAt: new Date(row.modified_at),
-    }));
+    return [];
   }
 
   /**
    * Read file content with optional offset and limit
    */
   read(filePath: string, offset: number = 0, limit: number = 2000): string {
-    filePath = this.normalizePath(filePath);
-
-    const stmt = this.db.prepare(`
-      SELECT content, is_dir FROM files
-      WHERE namespace = ? AND path = ?
-    `);
-
-    const row = stmt.get(this.namespace, filePath) as {
-      content: string;
-      is_dir: number;
-    } | null;
-
-    if (!row) {
+    const parsed = this.parsePath(filePath);
+    if (!parsed || !parsed.slug) {
       return `Error: File '${filePath}' not found`;
     }
 
-    if (row.is_dir) {
-      return `Error: '${filePath}' is a directory`;
+    let content: string;
+
+    if (parsed.type === "user") {
+      const user = this.db
+        .prepare("SELECT * FROM users WHERE slug = ?")
+        .get(parsed.slug) as User | null;
+      if (!user) {
+        return `Error: User '${parsed.slug}' not found`;
+      }
+      content = this.userToJson(user);
+    } else if (parsed.type === "history") {
+      const user = this.db
+        .prepare("SELECT * FROM users WHERE slug = ?")
+        .get(parsed.slug) as User | null;
+      if (!user) {
+        return `Error: User '${parsed.slug}' not found`;
+      }
+      const conversations = this.db
+        .prepare("SELECT * FROM conversations WHERE user_id = ? ORDER BY date")
+        .all(user.id) as Conversation[];
+      content = this.conversationsToMarkdown(user.name, conversations);
+    } else {
+      return `Error: File '${filePath}' not found`;
     }
 
-    const lines = row.content.split("\n");
+    const lines = content.split("\n");
     const selectedLines = lines.slice(offset, offset + limit);
 
-    // Format with line numbers
     return selectedLines
       .map((line, idx) => `${String(offset + idx + 1).padStart(6)}|${line}`)
       .join("\n");
@@ -146,196 +267,133 @@ export class SQLiteBackend implements BackendProtocol {
    * Read raw file data including metadata
    */
   readRaw(filePath: string): FileData {
-    filePath = this.normalizePath(filePath);
+    const parsed = this.parsePath(filePath);
+    const now = new Date().toISOString();
 
-    const stmt = this.db.prepare(`
-      SELECT content, is_dir, created_at, modified_at FROM files
-      WHERE namespace = ? AND path = ?
-    `);
-
-    const row = stmt.get(this.namespace, filePath) as {
-      content: string;
-      is_dir: number;
-      created_at: string;
-      modified_at: string;
-    } | null;
-
-    if (!row) {
+    if (!parsed || !parsed.slug) {
       return {
         content: [`Error: File '${filePath}' not found`],
-        created_at: new Date().toISOString(),
-        modified_at: new Date().toISOString(),
+        created_at: now,
+        modified_at: now,
       };
     }
 
-    if (row.is_dir) {
+    let content: string;
+    let timestamps = { created_at: now, modified_at: now };
+
+    if (parsed.type === "user") {
+      const user = this.db
+        .prepare("SELECT * FROM users WHERE slug = ?")
+        .get(parsed.slug) as User | null;
+      if (!user) {
+        return {
+          content: [`Error: User '${parsed.slug}' not found`],
+          created_at: now,
+          modified_at: now,
+        };
+      }
+      content = this.userToJson(user);
+      timestamps = { created_at: user.created_at, modified_at: user.updated_at };
+    } else if (parsed.type === "history") {
+      const user = this.db
+        .prepare("SELECT * FROM users WHERE slug = ?")
+        .get(parsed.slug) as User | null;
+      if (!user) {
+        return {
+          content: [`Error: User '${parsed.slug}' not found`],
+          created_at: now,
+          modified_at: now,
+        };
+      }
+      const conversations = this.db
+        .prepare("SELECT * FROM conversations WHERE user_id = ? ORDER BY date")
+        .all(user.id) as Conversation[];
+      content = this.conversationsToMarkdown(user.name, conversations);
+      timestamps = { created_at: user.created_at, modified_at: user.updated_at };
+    } else {
       return {
-        content: [`Error: '${filePath}' is a directory`],
-        created_at: row.created_at,
-        modified_at: row.modified_at,
+        content: [`Error: File '${filePath}' not found`],
+        created_at: now,
+        modified_at: now,
       };
     }
 
     return {
-      content: row.content.split("\n"),
-      created_at: row.created_at,
-      modified_at: row.modified_at,
+      content: content.split("\n"),
+      created_at: timestamps.created_at,
+      modified_at: timestamps.modified_at,
     };
   }
 
   /**
-   * Write a new file (fails if file exists)
+   * Write is not supported for this read-heavy demo
+   * In a real app, you'd parse the JSON/Markdown and update the database
    */
-  write(filePath: string, content: string): WriteResult {
-    filePath = this.normalizePath(filePath);
-
-    // Check if file already exists
-    const existsStmt = this.db.prepare(`
-      SELECT 1 FROM files WHERE namespace = ? AND path = ?
-    `);
-
-    if (existsStmt.get(this.namespace, filePath)) {
-      return {
-        error: `Error: File '${filePath}' already exists. Use edit to modify existing files.`,
-        path: filePath,
-        filesUpdate: null,
-      };
-    }
-
-    // Ensure parent directories exist
-    this.ensureParentDirectories(filePath);
-
-    const stmt = this.db.prepare(`
-      INSERT INTO files (namespace, path, content, is_dir, size, modified_at)
-      VALUES (?, ?, ?, 0, ?, datetime('now'))
-    `);
-
-    try {
-      stmt.run(this.namespace, filePath, content, content.length);
-      return {
-        error: undefined,
-        path: filePath,
-        filesUpdate: null, // External backend, not state-based
-      };
-    } catch (error) {
-      return {
-        error: `Error writing file: ${error}`,
-        path: filePath,
-        filesUpdate: null,
-      };
-    }
+  write(filePath: string, _content: string): WriteResult {
+    return {
+      error: `Error: Direct file writes not supported. Use database operations instead.`,
+      path: filePath,
+      filesUpdate: null,
+    };
   }
 
   /**
-   * Edit an existing file by replacing old_string with new_string
+   * Edit is not supported for this read-heavy demo
    */
   edit(
     filePath: string,
-    oldString: string,
-    newString: string,
-    replaceAll: boolean = false
+    _oldString: string,
+    _newString: string,
+    _replaceAll: boolean = false
   ): EditResult {
-    filePath = this.normalizePath(filePath);
-
-    const stmt = this.db.prepare(`
-      SELECT content FROM files
-      WHERE namespace = ? AND path = ? AND is_dir = 0
-    `);
-
-    const row = stmt.get(this.namespace, filePath) as { content: string } | null;
-
-    if (!row) {
-      return {
-        error: `Error: File '${filePath}' not found`,
-        path: filePath,
-        filesUpdate: null,
-        occurrences: 0,
-      };
-    }
-
-    const content = row.content;
-    const occurrences = content.split(oldString).length - 1;
-
-    if (occurrences === 0) {
-      return {
-        error: `Error: '${oldString}' not found in file`,
-        path: filePath,
-        filesUpdate: null,
-        occurrences: 0,
-      };
-    }
-
-    if (!replaceAll && occurrences > 1) {
-      return {
-        error: `Error: '${oldString}' found ${occurrences} times. Use replaceAll=true to replace all occurrences, or provide more context for a unique match.`,
-        path: filePath,
-        filesUpdate: null,
-        occurrences,
-      };
-    }
-
-    const newContent = replaceAll
-      ? content.split(oldString).join(newString)
-      : content.replace(oldString, newString);
-
-    const updateStmt = this.db.prepare(`
-      UPDATE files
-      SET content = ?, size = ?, modified_at = datetime('now')
-      WHERE namespace = ? AND path = ?
-    `);
-
-    updateStmt.run(newContent, newContent.length, this.namespace, filePath);
-
     return {
-      error: undefined,
+      error: `Error: Direct file edits not supported. Use database operations instead.`,
       path: filePath,
       filesUpdate: null,
-      occurrences: replaceAll ? occurrences : 1,
+      occurrences: 0,
     };
   }
 
   /**
-   * Search for a pattern in files
+   * Search for a pattern in synthesized files
    */
-  grepRaw(
-    pattern: string,
-    path?: string,
-    glob?: string
-  ): GrepMatch[] | string {
+  grepRaw(pattern: string, _path?: string, _glob?: string): GrepMatch[] | string {
     let regex: RegExp;
     try {
-      regex = new RegExp(pattern);
+      regex = new RegExp(pattern, "i");
     } catch {
       return `Invalid regex pattern: ${pattern}`;
     }
 
-    const basePath = path ? this.normalizePath(path) : "/";
-
-    const stmt = this.db.prepare(`
-      SELECT path, content FROM files
-      WHERE namespace = ? AND path LIKE ? AND is_dir = 0
-    `);
-
-    const rows = stmt.all(this.namespace, basePath + "%") as Array<{
-      path: string;
-      content: string;
-    }>;
-
     const matches: GrepMatch[] = [];
+    const users = this.db.prepare("SELECT * FROM users ORDER BY name").all() as User[];
 
-    for (const row of rows) {
-      // Apply glob filter if provided
-      if (glob && !minimatch(row.path, glob)) {
-        continue;
+    for (const user of users) {
+      // Search user profiles
+      const userJson = this.userToJson(user);
+      const userLines = userJson.split("\n");
+      for (let i = 0; i < userLines.length; i++) {
+        if (regex.test(userLines[i])) {
+          matches.push({
+            path: `/users/${user.slug}.json`,
+            line: i + 1,
+            text: userLines[i],
+          });
+        }
       }
 
-      const lines = row.content.split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        if (regex.test(lines[i])) {
+      // Search conversation history
+      const conversations = this.db
+        .prepare("SELECT * FROM conversations WHERE user_id = ? ORDER BY date")
+        .all(user.id) as Conversation[];
+      const historyMd = this.conversationsToMarkdown(user.name, conversations);
+      const historyLines = historyMd.split("\n");
+      for (let i = 0; i < historyLines.length; i++) {
+        if (regex.test(historyLines[i])) {
           matches.push({
-            path: row.path,
+            path: `/history/${user.slug}.md`,
             line: i + 1,
-            text: lines[i],
+            text: historyLines[i],
           });
         }
       }
@@ -347,62 +405,102 @@ export class SQLiteBackend implements BackendProtocol {
   /**
    * Find files matching a glob pattern
    */
-  globInfo(pattern: string, path: string = "/"): FileInfo[] {
-    path = this.normalizePath(path);
+  globInfo(pattern: string, _path: string = "/"): FileInfo[] {
+    const allFiles: FileInfo[] = [];
+    const users = this.db.prepare("SELECT slug, updated_at FROM users").all() as User[];
 
-    const stmt = this.db.prepare(`
-      SELECT path, is_dir, size, modified_at FROM files
-      WHERE namespace = ? AND path LIKE ?
-    `);
-
-    const rows = stmt.all(this.namespace, path + "%") as Array<{
-      path: string;
-      is_dir: number;
-      size: number;
-      modified_at: string;
-    }>;
-
-    return rows
-      .filter((row) => minimatch(row.path, pattern))
-      .map((row) => ({
-        path: row.path,
-        isDir: Boolean(row.is_dir),
-        size: row.size,
-        modifiedAt: new Date(row.modified_at),
-      }));
-  }
-
-  /**
-   * Ensure parent directories exist for a file path
-   */
-  private ensureParentDirectories(filePath: string): void {
-    const parts = filePath.split("/").filter(Boolean);
-    let currentPath = "";
-
-    for (let i = 0; i < parts.length - 1; i++) {
-      currentPath += "/" + parts[i];
-
-      const stmt = this.db.prepare(`
-        INSERT OR IGNORE INTO files (namespace, path, content, is_dir, size)
-        VALUES (?, ?, '', 1, 0)
-      `);
-
-      stmt.run(this.namespace, currentPath);
+    for (const user of users) {
+      allFiles.push({
+        path: `/users/${user.slug}.json`,
+        is_dir: false,
+        size: 0,
+        modified_at: new Date(user.updated_at).toISOString(),
+      });
+      allFiles.push({
+        path: `/history/${user.slug}.md`,
+        is_dir: false,
+        size: 0,
+        modified_at: new Date(user.updated_at).toISOString(),
+      });
     }
+
+    // Simple glob matching
+    const regexPattern = pattern
+      .replace(/\*\*/g, ".*")
+      .replace(/\*/g, "[^/]*")
+      .replace(/\?/g, ".");
+
+    const regex = new RegExp(`^${regexPattern}$`);
+    return allFiles.filter((f) => regex.test(f.path));
+  }
+
+  // ============================================================================
+  // Database Operations (for seeding and direct access)
+  // ============================================================================
+
+  /**
+   * Insert or update a user
+   */
+  upsertUser(user: Omit<User, "id" | "created_at" | "updated_at">): number {
+    const existing = this.db
+      .prepare("SELECT id FROM users WHERE slug = ?")
+      .get(user.slug) as { id: number } | null;
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE users SET
+          name = ?, email = ?, role = ?, company = ?, industry = ?,
+          team_size = ?, interests = ?, current_tools = ?, budget = ?,
+          decision_timeline = ?, requirements = ?, updated_at = datetime('now')
+        WHERE slug = ?
+      `).run(
+        user.name, user.email, user.role, user.company, user.industry,
+        user.team_size, user.interests, user.current_tools, user.budget,
+        user.decision_timeline, user.requirements, user.slug
+      );
+      return existing.id;
+    }
+
+    const result = this.db.prepare(`
+      INSERT INTO users (slug, name, email, role, company, industry, team_size,
+        interests, current_tools, budget, decision_timeline, requirements)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      user.slug, user.name, user.email, user.role, user.company, user.industry,
+      user.team_size, user.interests, user.current_tools, user.budget,
+      user.decision_timeline, user.requirements
+    );
+
+    return Number(result.lastInsertRowid);
   }
 
   /**
-   * Delete a file (useful for cleanup)
+   * Add a conversation for a user
    */
-  delete(filePath: string): boolean {
-    filePath = this.normalizePath(filePath);
+  addConversation(userSlug: string, conv: { date: string; title: string; notes: string[] }): void {
+    const user = this.db
+      .prepare("SELECT id FROM users WHERE slug = ?")
+      .get(userSlug) as { id: number } | null;
 
-    const stmt = this.db.prepare(`
-      DELETE FROM files WHERE namespace = ? AND path = ?
-    `);
+    if (!user) {
+      throw new Error(`User '${userSlug}' not found`);
+    }
 
-    const result = stmt.run(this.namespace, filePath);
-    return result.changes > 0;
+    // Delete existing conversation for this date to allow re-seeding
+    this.db.prepare("DELETE FROM conversations WHERE user_id = ? AND date = ?").run(user.id, conv.date);
+
+    this.db.prepare(`
+      INSERT INTO conversations (user_id, date, title, notes)
+      VALUES (?, ?, ?, ?)
+    `).run(user.id, conv.date, conv.title, JSON.stringify(conv.notes));
+  }
+
+  /**
+   * Clear all data (for testing)
+   */
+  clear(): void {
+    this.db.run("DELETE FROM conversations");
+    this.db.run("DELETE FROM users");
   }
 
   /**
