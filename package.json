@@ -6,8 +6,7 @@
   "main": "index.ts",
   "scripts": {
     "start": "bun run index.ts",
-    "seed": "bun run seed.ts",
-    "demo": "bun run demo-backends.ts"
+    "seed": "bun run seed.ts"
   },
   "keywords": ["deepagents", "langchain", "virtual-filesystem", "ai-agents"],
   "author": "",

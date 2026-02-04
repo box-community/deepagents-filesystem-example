@@ -87,7 +87,6 @@ Customer data is stored in a **proper relational database** with `users` and `co
 |---------|-------------|
 | `bun run seed` | Upload seed data to S3 and SQLite |
 | `bun run start` | Run the agent demo |
-| `bun run demo` | Test backends without API key |
 
 ## Environment Variables
 
