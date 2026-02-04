@@ -106,7 +106,7 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 ## Project Structure
 
 ```
-deepagent-sandbox-example/
+deepagent-filesystem-example/
 ├── backends/
 │   ├── sqlite-backend.ts   # SQLite → Virtual filesystem
 │   └── s3-backend.ts       # S3 implementation

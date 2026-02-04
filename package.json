@@ -1,5 +1,5 @@
 {
-  "name": "deepagent-sandbox-example",
+  "name": "deepagent-filesystem-example",
   "version": "1.0.0",
   "description": "Deep Agents example showcasing virtual filesystem backends",
   "type": "module",
