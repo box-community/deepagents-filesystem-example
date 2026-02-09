@@ -712,30 +712,33 @@ export class BoxBackend implements BackendProtocol {
     // Process files (limit to prevent timeout)
     const filesToProcess = allFiles.slice(0, 100);
 
-    for (const file of filesToProcess) {
-      // Apply glob filter
-      if (glob && !minimatch(file.path, glob)) {
-        continue;
-      }
+    // Filter by glob before downloading (avoid unnecessary downloads)
+    const filtered = glob
+      ? filesToProcess.filter((f) => minimatch(f.path, glob))
+      : filesToProcess;
 
-      try {
-        const content = await this.downloadFileContent(file.id);
-        if (content) {
-          const lines = content.split("\n");
-          for (let i = 0; i < lines.length; i++) {
-            if (regex.test(lines[i])) {
-              matches.push({
-                path: file.path,
-                line: i + 1,
-                text: lines[i],
-              });
+    // Download all files in parallel
+    await Promise.all(
+      filtered.map(async (file) => {
+        try {
+          const content = await this.downloadFileContent(file.id);
+          if (content) {
+            const lines = content.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              if (regex.test(lines[i])) {
+                matches.push({
+                  path: file.path,
+                  line: i + 1,
+                  text: lines[i],
+                });
+              }
             }
           }
+        } catch {
+          // Skip files that can't be read
         }
-      } catch {
-        // Skip files that can't be read
-      }
-    }
+      })
+    );
 
     return matches;
   }
