@@ -5,7 +5,7 @@ This example demonstrates how to use **Deep Agents** with multiple storage backe
 ## Overview
 
 The agent acts as a sales assistant that can:
-- Read company documentation from **S3**
+- Read company documentation from **Box**
 - Access customer profiles and conversation history from **SQLite**
 - Generate personalized proposals to the **local filesystem**
 
@@ -17,9 +17,9 @@ bun install
 
 # 2. Set up environment variables
 cp .env.example .env
-# Edit .env with your credentials
+# Edit .env with your Anthropic API key and Box Developer Token
 
-# 3. Seed the data (uploads to S3 and SQLite)
+# 3. Seed the data (uploads to Box and SQLite)
 bun run seed
 
 # 4. Run the agent
@@ -46,7 +46,7 @@ bun run start
 ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
 │ /docs/        │ │ /memories/    │ │ /workspace/   │
 │               │ │               │ │               │
-│ S3 Backend    │ │ SQLite        │ │ Filesystem    │
+│ Box Backend   │ │ SQLite        │ │ Filesystem    │
 │               │ │ Backend       │ │ Backend       │
 │               │ │               │ │               │
 │ Company docs  │ │ User profiles │ │ Generated     │
@@ -56,7 +56,7 @@ bun run start
 
 ## Seed Data
 
-### Company Documentation (`./s3/`)
+### Company Documentation (`./box-docs/`)
 
 | Company | Files |
 |---------|-------|
@@ -85,7 +85,7 @@ Customer data is stored in a **proper relational database** with `users` and `co
 
 | Command | Description |
 |---------|-------------|
-| `bun run seed` | Upload seed data to S3 and SQLite |
+| `bun run seed` | Upload seed data to Box and SQLite |
 | `bun run start` | Run the agent demo |
 
 ## Environment Variables
@@ -95,11 +95,17 @@ Create a `.env` file:
 ```bash
 ANTHROPIC_API_KEY=your-anthropic-key
 
-# S3 Configuration
-AWS_S3_ENDPOINT=https://s3.us-west-2.amazonaws.com
-AWS_S3_BUCKET=your-bucket-name
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
+# Box Developer Token (generate from Box Developer Console → Configuration → Developer Token)
+BOX_DEVELOPER_TOKEN=your-developer-token
+```
+
+For production use with Client Credentials Grant (CCG):
+
+```bash
+BOX_CLIENT_ID=your-box-client-id
+BOX_CLIENT_SECRET=your-box-client-secret
+BOX_USER_ID=your-box-user-id
+# or BOX_ENTERPRISE_ID=your-box-enterprise-id
 ```
 
 ## Project Structure
@@ -108,8 +114,8 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 deepagent-filesystem-example/
 ├── backends/
 │   ├── sqlite-backend.ts   # SQLite → Virtual filesystem
-│   └── s3-backend.ts       # S3 implementation
-├── s3/                     # Seed data for S3
+│   └── box-backend.ts      # Box implementation
+├── box-docs/               # Seed data for Box
 │   ├── acme-corp/
 │   ├── nexus-health/
 │   ├── greenleaf-analytics/
@@ -117,14 +123,14 @@ deepagent-filesystem-example/
 ├── workspace/             # Agent output (gitignored)
 ├── data/                  # SQLite database (gitignored)
 │   └── memories.db        # Users + conversations tables
-├── seed.ts               # Seed script (loads data into DB + S3)
+├── seed.ts               # Seed script (loads data into DB + Box)
 ├── index.ts              # Main agent demo
-└── demo-backends.ts      # Backend test script
+└── .env.example          # Example environment variables
 ```
 
 ## How It Works
 
-1. **Seeding**: `bun run seed` uploads files from `./s3/` to S3, and inserts structured data into SQLite tables (`users`, `conversations`).
+1. **Seeding**: `bun run seed` uploads files from `./box-docs/` to a `deep-agents-docs` folder in your Box account, and inserts structured data into SQLite tables (`users`, `conversations`).
 
 2. **Virtual Filesystem**: The `SQLiteBackend` synthesizes files from database queries:
    - `ls /memories/users/` → Queries `SELECT slug FROM users` → Returns `sarah-chen.json`, etc.
@@ -132,7 +138,7 @@ deepagent-filesystem-example/
    - `read /memories/history/sarah-chen.md` → Joins `users` + `conversations` → Returns Markdown
 
 3. **Agent Execution**: The agent uses filesystem tools (`ls`, `read_file`) which route to backends based on path:
-   - `/docs/*` → S3 (real files)
+   - `/docs/*` → Box (real files stored in your Box account)
    - `/memories/*` → SQLite (virtual files from database)
    - `/workspace/*` → Local filesystem (output)
 
@@ -142,7 +148,7 @@ deepagent-filesystem-example/
 
 ### Add a New Company
 
-1. Create a folder in `./s3/your-company/`
+1. Create a folder in `./box-docs/your-company/`
 2. Add markdown files (company-info.md, pricing.md, etc.)
 3. Run `bun run seed`
 

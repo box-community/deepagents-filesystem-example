@@ -38,4 +38,4 @@ workspace/
 data/
 !workspace/.gitkeep
 !data/.gitkeep
-!s3
+!box-docs

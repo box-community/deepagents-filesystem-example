@@ -3,8 +3,8 @@
  *
  * This module exports custom storage backends that implement the BackendProtocol:
  * - SQLiteBackend: Stores files in a SQLite database (sync API)
- * - S3Backend: Stores files in an S3-compatible bucket (async API)
+ * - BoxBackend: Stores files in Box via the Box Platform API (async API)
  */
 
 export { SQLiteBackend, type SQLiteBackendOptions } from "./sqlite-backend";
-export { S3Backend, type S3BackendOptions } from "./s3-backend";
+export { BoxBackend, type BoxBackendOptions } from "./box-backend";

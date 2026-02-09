@@ -2,7 +2,7 @@
  * Seed Script for Deep Agents Virtual Filesystem
  *
  * This script loads seed data into the storage backends:
- * - S3: Company documentation from ./s3/
+ * - Box: Company documentation from ./box-docs/ (uploaded to a Box folder)
  * - SQLite: User profiles and conversation history as proper relational data
  *
  * Run with: bun run seed
@@ -10,18 +10,19 @@
 
 import { readdirSync, statSync } from "fs";
 import { join, relative } from "path";
-import { S3Backend } from "./backends/s3-backend";
+import { BoxBackend, DEFAULT_BOX_FOLDER_NAME } from "./backends/box-backend";
 import { SQLiteBackend } from "./backends/sqlite-backend";
 
 // Configuration from environment
-const S3_BUCKET = process.env.AWS_S3_BUCKET;
-const S3_ENDPOINT = process.env.AWS_S3_ENDPOINT;
-const S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID;
-const S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY;
+const BOX_DEVELOPER_TOKEN = process.env.BOX_DEVELOPER_TOKEN;
+const BOX_CLIENT_ID = process.env.BOX_CLIENT_ID;
+const BOX_CLIENT_SECRET = process.env.BOX_CLIENT_SECRET;
+const BOX_USER_ID = process.env.BOX_USER_ID;
+const BOX_ENTERPRISE_ID = process.env.BOX_ENTERPRISE_ID;
 
-if (!S3_ACCESS_KEY || !S3_SECRET_KEY || !S3_ENDPOINT || !S3_BUCKET) {
+if (!BOX_DEVELOPER_TOKEN && (!BOX_CLIENT_ID || !BOX_CLIENT_SECRET)) {
   console.error(
-    "Error: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_ENDPOINT, and AWS_S3_BUCKET are required"
+    "Error: Either BOX_DEVELOPER_TOKEN, or BOX_CLIENT_ID + BOX_CLIENT_SECRET are required"
   );
   process.exit(1);
 }
@@ -349,39 +350,35 @@ function getAllFiles(dir: string, baseDir: string = dir): string[] {
 }
 
 /**
- * Seed S3 with company documentation
+ * Seed Box with company documentation
  */
-async function seedS3() {
-  console.log("\n☁️  Seeding S3 with company documentation...\n");
+async function seedBox() {
+  console.log("\n📦 Seeding Box with company documentation...\n");
 
-  const s3Backend = new S3Backend({
-    bucket: S3_BUCKET!,
-    prefix: "docs",
-    endpoint: S3_ENDPOINT!,
-    forcePathStyle: false,
-    clientConfig: {
-      region: "us-west-2",
-      credentials: {
-        accessKeyId: S3_ACCESS_KEY!,
-        secretAccessKey: S3_SECRET_KEY!,
-      },
-    },
+  const boxBackend = new BoxBackend({
+    developerToken: BOX_DEVELOPER_TOKEN,
+    clientId: BOX_CLIENT_ID,
+    clientSecret: BOX_CLIENT_SECRET,
+    userId: BOX_USER_ID,
+    enterpriseId: BOX_ENTERPRISE_ID,
   });
 
-  const s3Dir = "./s3";
+  // Find or create the "deep-agents-docs" folder in the user's Box root
+  await boxBackend.ensureRootFolder(DEFAULT_BOX_FOLDER_NAME);
+
+  const docsDir = "./box-docs";
   let successCount = 0;
   let errorCount = 0;
 
   try {
-    const files = getAllFiles(s3Dir);
+    const files = getAllFiles(docsDir);
 
     for (const filePath of files) {
-      const relativePath = "/" + relative(s3Dir, filePath);
+      const relativePath = "/" + relative(docsDir, filePath);
       const content = await Bun.file(filePath).text();
 
-      // Delete first to allow re-seeding
-      await s3Backend.delete(relativePath);
-      const result = await s3Backend.write(relativePath, content);
+      // Upsert: creates the file if new, uploads a new version if it exists
+      const result = await boxBackend.upsertFile(relativePath, content);
 
       if (result.error) {
         console.log(`  ❌ ${relativePath}: ${result.error}`);
@@ -392,7 +389,7 @@ async function seedS3() {
       }
     }
   } catch (error: any) {
-    console.error(`  Error reading s3 directory: ${error.message}`);
+    console.error(`  Error reading docs directory: ${error.message}`);
   }
 
   console.log(`\n  Total: ${successCount} succeeded, ${errorCount} failed`);
@@ -453,8 +450,8 @@ async function main() {
   console.log("🌱 Deep Agents Seed Script");
   console.log("=".repeat(50));
 
-  // Seed S3
-  await seedS3();
+  // Seed Box
+  await seedBox();
 
   // Seed SQLite
   seedSQLite();
@@ -464,7 +461,7 @@ async function main() {
 
   // Show what the virtual filesystem looks like
   console.log("Virtual filesystem structure:");
-  console.log("  /docs/                    (S3)");
+  console.log("  /docs/                    (Box)");
   console.log("    ├── acme-corp/");
   console.log("    ├── nexus-health/");
   console.log("    ├── greenleaf-analytics/");

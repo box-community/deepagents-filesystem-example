@@ -4,7 +4,7 @@
  * This example demonstrates using 3 different storage backends with a Deep Agent:
  *
  * 1. SQL Database (SQLiteBackend) - For persistent memories at /memories/
- * 2. S3-compatible Storage (S3Backend) - For documentation at /docs/
+ * 2. Box (BoxBackend) - For documentation at /docs/
  * 3. Local Filesystem (FilesystemBackend) - For workspace files at /workspace/
  *
  * Before running, seed the data with: bun run seed
@@ -20,17 +20,19 @@ import {
 } from "deepagents";
 import { MemorySaver } from "@langchain/langgraph";
 import { SQLiteBackend } from "./backends/sqlite-backend";
-import { S3Backend } from "./backends/s3-backend";
+import { BoxBackend, DEFAULT_BOX_FOLDER_NAME } from "./backends/box-backend";
 
 // Configuration from environment
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const S3_BUCKET = process.env.AWS_S3_BUCKET;
-const S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID;
-const S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY;
+const BOX_DEVELOPER_TOKEN = process.env.BOX_DEVELOPER_TOKEN;
+const BOX_CLIENT_ID = process.env.BOX_CLIENT_ID;
+const BOX_CLIENT_SECRET = process.env.BOX_CLIENT_SECRET;
+const BOX_USER_ID = process.env.BOX_USER_ID;
+const BOX_ENTERPRISE_ID = process.env.BOX_ENTERPRISE_ID;
 
-if (!S3_ACCESS_KEY || !S3_SECRET_KEY || !S3_BUCKET) {
+if (!BOX_DEVELOPER_TOKEN && (!BOX_CLIENT_ID || !BOX_CLIENT_SECRET)) {
   console.error(
-    "Error: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_S3_BUCKET are required"
+    "Error: Either BOX_DEVELOPER_TOKEN, or BOX_CLIENT_ID + BOX_CLIENT_SECRET are required"
   );
   process.exit(1);
 }
@@ -41,43 +43,33 @@ if (!ANTHROPIC_API_KEY) {
 }
 
 /**
- * Create a CompositeBackend that routes to different storage systems
+ * Create a CompositeBackend factory that routes to different storage systems.
+ * The BoxBackend must be initialized (with ensureRootFolder) before calling this.
  *
  * Path routing:
  * - /workspace/  → FilesystemBackend (local disk, for output files)
  * - /memories/   → SQLiteBackend (database, for user data & history)
- * - /docs/       → S3Backend (object storage, for company documentation)
+ * - /docs/       → BoxBackend (Box, for company documentation)
  * - default      → StateBackend (ephemeral, for scratch space)
  */
-const createCompositeBackend: BackendFactory = (stateAndStore) => {
-  const workspaceBackend = new FilesystemBackend({
-    rootDir: "./workspace",
-    virtualMode: true,
-  });
+function createCompositeBackendFactory(boxBackend: BoxBackend): BackendFactory {
+  return (stateAndStore) => {
+    const workspaceBackend = new FilesystemBackend({
+      rootDir: "./workspace",
+      virtualMode: true,
+    });
 
-  const sqliteBackend = new SQLiteBackend({
-    dbPath: "./data/memories.db",
-  });
+    const sqliteBackend = new SQLiteBackend({
+      dbPath: "./data/memories.db",
+    });
 
-  const s3Backend = new S3Backend({
-    bucket: S3_BUCKET,
-    prefix: "docs",
-    forcePathStyle: false,
-    clientConfig: {
-      region: "us-west-2",
-      credentials: {
-        accessKeyId: S3_ACCESS_KEY,
-        secretAccessKey: S3_SECRET_KEY,
-      },
-    },
-  });
-
-  return new CompositeBackend(new StateBackend(stateAndStore), {
-    "/workspace/": workspaceBackend,
-    "/memories/": sqliteBackend,
-    "/docs/": s3Backend,
-  });
-};
+    return new CompositeBackend(new StateBackend(stateAndStore), {
+      "/workspace/": workspaceBackend,
+      "/memories/": sqliteBackend,
+      "/docs/": boxBackend,
+    });
+  };
+}
 
 /**
  * System prompt that explains the virtual filesystem to the agent
@@ -86,7 +78,7 @@ const systemPrompt = `You are a helpful AI sales assistant with access to a virt
 
 ## Available Data Sources
 
-### /docs/ (S3 Storage - Company Documentation)
+### /docs/ (Box - Company Documentation)
 Contains company information, product details, pricing, and compliance docs.
 Organized by company: /docs/acme-corp/, /docs/nexus-health/, /docs/greenleaf-analytics/, /docs/edutech-pro/
 
@@ -115,6 +107,16 @@ async function main() {
   // Ensure workspace directory exists
   await Bun.write("./workspace/.gitkeep", "");
 
+  // Initialize Box backend and find/create the docs folder
+  const boxBackend = new BoxBackend({
+    developerToken: BOX_DEVELOPER_TOKEN,
+    clientId: BOX_CLIENT_ID,
+    clientSecret: BOX_CLIENT_SECRET,
+    userId: BOX_USER_ID,
+    enterpriseId: BOX_ENTERPRISE_ID,
+  });
+  await boxBackend.ensureRootFolder(DEFAULT_BOX_FOLDER_NAME);
+
   // Create the model
   const model = new ChatAnthropic({
     model: "claude-opus-4-5",
@@ -127,7 +129,7 @@ async function main() {
   // Create the deep agent with composite backend
   const agent = createDeepAgent({
     model,
-    backend: createCompositeBackend,
+    backend: createCompositeBackendFactory(boxBackend),
     checkpointer,
     systemPrompt,
   });
@@ -136,7 +138,7 @@ async function main() {
 
   console.log("🚀 Deep Agent Virtual Filesystem Demo\n");
   console.log("Data sources:");
-  console.log("  📄 /docs/      → S3 (company documentation)");
+  console.log("  📄 /docs/      → Box (company documentation)");
   console.log("  🧠 /memories/  → SQLite (customer data)");
   console.log("  📁 /workspace/ → Filesystem (output)\n");
   console.log("=".repeat(60) + "\n");

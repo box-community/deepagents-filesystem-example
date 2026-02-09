@@ -206,7 +206,7 @@ const backend = (rt) => CompositeBackend({
   default: StateBackend(rt),           // Ephemeral workspace (in-memory)
   routes: {
     "/memories/": StoreBackend(rt),    // Postgres (persistent user data)
-    "/docs/": S3Backend("docs-bucket"), // S3 (company documentation)
+    "/docs/": BoxBackend(),              // Box (company documentation)
   }
 });
 ```
@@ -216,7 +216,7 @@ const backend = (rt) => CompositeBackend({
 Now when the agent operates:
 - `/workspace/plan.md` goes to memory—ephemeral, per-conversation
 - `/memories/preferences.txt` goes to Postgres—persistent, survives restarts
-- `/docs/api_reference.md` comes from S3—your company knowledge base
+- `/docs/api_reference.md` comes from Box—your company knowledge base
 
 The agent just sees *one filesystem*. It has no idea files are living in three different places.
 
@@ -344,7 +344,7 @@ Quick note on when to use virtual vs. real filesystems:
 | Use Real Filesystems When: | Use Virtual Filesystems When: |
 |---------------------------|------------------------------|
 | Running tests, linters, git | Multi-tenant web apps |
-| Working with existing codebases | Mixing Postgres + S3 + APIs |
+| Working with existing codebases | Mixing Postgres + Box + APIs |
 | Need `npm install`, `cargo build` | Need validation & permissions |
 | Single-user local development | Serverless deployment |
 
