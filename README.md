@@ -9,6 +9,43 @@ The agent acts as a sales assistant that can:
 - Access customer profiles and conversation history from **SQLite**
 - Generate personalized proposals to the **local filesystem**
 
+## Prerequisites
+
+Before you begin, make sure you have the following:
+
+### 1. Bun runtime
+
+This project uses [Bun](https://bun.sh) as its JavaScript/TypeScript runtime.
+
+```bash
+# macOS / Linux
+curl -fsSL https://bun.sh/install | bash
+
+# Verify installation
+bun --version
+```
+
+### 2. Anthropic API key
+
+You need an API key from [Anthropic](https://console.anthropic.com/) to power the agent.
+
+1. Sign up or log in at <https://console.anthropic.com/>
+2. Navigate to **API Keys**
+3. Click **Create Key** and copy the value (starts with `sk-ant-...`)
+
+### 3. Box Developer Token
+
+The project uses Box as a cloud document store. You'll need a free Box developer account and a Developer Token.
+
+1. Sign up for a free account at <https://developer.box.com/>
+2. Go to the [Box Developer Console](https://app.box.com/developers/console)
+3. Click **Create New App** (choose *Custom App* with *Server Authentication (Client Credentials Grant)*)
+4. Once the app is created, go to the app's **Configuration** tab
+5. Scroll down to **Developer Token** and click **Generate Developer Token**
+6. Copy the token — it is valid for **60 minutes**. You can regenerate it any time from the same page.
+
+> **Note:** Developer Tokens are meant for local development and expire after 60 minutes. If the agent fails with an auth error, generate a fresh token.
+
 ## Quick Start
 
 ```bash
@@ -17,13 +54,36 @@ bun install
 
 # 2. Set up environment variables
 cp .env.example .env
-# Edit .env with your Anthropic API key and Box Developer Token
+# Then open .env and fill in your keys (see below)
 
-# 3. Seed the data (uploads to Box and SQLite)
+# 3. Seed the data (uploads docs to Box and populates SQLite)
 bun run seed
 
 # 4. Run the agent
 bun run start
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in the values:
+
+```bash
+# Anthropic API Key (required for agent)
+ANTHROPIC_API_KEY=
+
+# Box Developer Token (simplest — great for development)
+# Generate from: Box Developer Console → your app → Configuration → Developer Token
+# Tokens expire after 60 minutes.
+BOX_DEVELOPER_TOKEN=
+```
+
+That's all you need to get started. For long-lived production use with Client Credentials Grant (CCG), you can use these instead of a Developer Token:
+
+```bash
+BOX_CLIENT_ID=your-box-client-id
+BOX_CLIENT_SECRET=your-box-client-secret
+BOX_USER_ID=your-box-user-id
+# or BOX_ENTERPRISE_ID=your-box-enterprise-id
 ```
 
 ## Architecture
@@ -85,47 +145,29 @@ Customer data is stored in a **proper relational database** with `users` and `co
 
 | Command | Description |
 |---------|-------------|
-| `bun run seed` | Upload seed data to Box and SQLite |
+| `bun run seed` | Upload seed data to Box and populate SQLite |
 | `bun run start` | Run the agent demo |
-
-## Environment Variables
-
-Create a `.env` file:
-
-```bash
-ANTHROPIC_API_KEY=your-anthropic-key
-
-# Box Developer Token (generate from Box Developer Console → Configuration → Developer Token)
-BOX_DEVELOPER_TOKEN=your-developer-token
-```
-
-For production use with Client Credentials Grant (CCG):
-
-```bash
-BOX_CLIENT_ID=your-box-client-id
-BOX_CLIENT_SECRET=your-box-client-secret
-BOX_USER_ID=your-box-user-id
-# or BOX_ENTERPRISE_ID=your-box-enterprise-id
-```
 
 ## Project Structure
 
 ```
 deepagent-filesystem-example/
 ├── backends/
-│   ├── sqlite-backend.ts   # SQLite → Virtual filesystem
-│   └── box-backend.ts      # Box implementation
+│   ├── index.ts            # Backend exports
+│   ├── box-backend.ts      # Box cloud storage backend
+│   └── sqlite-backend.ts   # SQLite → virtual filesystem backend
 ├── box-docs/               # Seed data for Box
 │   ├── acme-corp/
 │   ├── nexus-health/
 │   ├── greenleaf-analytics/
 │   └── edutech-pro/
-├── workspace/             # Agent output (gitignored)
-├── data/                  # SQLite database (gitignored)
-│   └── memories.db        # Users + conversations tables
-├── seed.ts               # Seed script (loads data into DB + Box)
-├── index.ts              # Main agent demo
-└── .env.example          # Example environment variables
+├── workspace/              # Agent output (gitignored)
+├── data/                   # SQLite database (gitignored)
+│   └── memories.db
+├── seed.ts                 # Seed script (loads data into Box + SQLite)
+├── index.ts                # Main agent demo
+├── .env.example            # Example environment variables
+└── package.json
 ```
 
 ## How It Works
