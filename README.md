@@ -37,12 +37,13 @@ You need an API key from [Anthropic](https://console.anthropic.com/) to power th
 
 The project uses Box as a cloud document store. You'll need a free Box developer account and a Developer Token.
 
-1. Sign up for a free account at <https://developer.box.com/>
+1. Sign up for a free account at <http://account.box.com/developer/signup>
 2. Go to the [Box Developer Console](https://app.box.com/developers/console)
 3. Click **Create New App** (choose *Custom App* with *Server Authentication (Client Credentials Grant)*)
 4. Once the app is created, go to the app's **Configuration** tab
-5. Scroll down to **Developer Token** and click **Generate Developer Token**
-6. Copy the token — it is valid for **60 minutes**. You can regenerate it any time from the same page.
+5. Under **Application Scopes**, make sure **"Write all files and folders stored in Box"** is enabled (the seed script needs this to create folders and upload files)
+6. Scroll down to **Developer Token** and click **Generate Developer Token**
+7. Copy the token — it is valid for **60 minutes**. You can regenerate it any time from the same page.
 
 > **Note:** Developer Tokens are meant for local development and expire after 60 minutes. If the agent fails with an auth error, generate a fresh token.
 
