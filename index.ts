@@ -103,7 +103,7 @@ async function main() {
 
   // Initialize Box backend and find/create the docs folder
   const boxBackend = new BoxBackend({
-    developerToken: BOX_DEVELOPER_TOKEN,
+    developerToken: BOX_DEVELOPER_TOKEN!,
   });
   await boxBackend.ensureRootFolder(DEFAULT_BOX_FOLDER_NAME);
   await boxBackend.warmCache();
@@ -129,9 +129,9 @@ async function main() {
 
   console.log("🚀 Deep Agent Virtual Filesystem Demo\n");
   console.log("Data sources:");
-  console.log("  📄 /docs/      → Box (company documentation)");
+  console.log(`  📄 /docs/      → Box "${DEFAULT_BOX_FOLDER_NAME}" folder (company documentation)`);
   console.log("  🧠 /memories/  → SQLite (customer data)");
-  console.log("  📁 /workspace/ → Filesystem (output)\n");
+  console.log(`  📁 /workspace/ → Local filesystem (output, then uploaded to Box "${DEFAULT_BOX_FOLDER_NAME}" folder)\n`);
   console.log("=".repeat(60) + "\n");
 
   // The prompt asks the agent to explore and generate a proposal
@@ -148,7 +148,7 @@ Steps:
    - Acknowledges her previous conversations and concerns
    - Recommends appropriate products and pricing
    - Addresses any objections from the history
-6. Write the proposal to /workspace/sarah-chen-proposal.md
+6. Write the proposal to /workspace/sarah-chen-proposal.md (it will also be uploaded to Box)
 
 Make it professional and persuasive!`;
 
@@ -181,6 +181,24 @@ Make it professional and persuasive!`;
     const proposalFile = Bun.file("./workspace/sarah-chen-proposal.md");
     const proposalContent = await proposalFile.text();
     console.log(proposalContent);
+
+    // Upload the proposal to Box
+    console.log("\n" + "=".repeat(60));
+    console.log("\n📦 FILE UPLOAD:\n");
+    console.log("=".repeat(60) + "\n");
+
+    console.log(`Uploading sarah-chen-proposal.md to Box...`);
+    const uploadResult = await boxBackend.upsertFile(
+      "/sarah-chen-proposal.md",
+      proposalContent
+    );
+    if (!uploadResult.error) {
+      console.log(
+        `✅ Successfully written to "${DEFAULT_BOX_FOLDER_NAME}" in Box (folder ID: ${boxBackend.getRootFolderId()})`
+      );
+    } else {
+      console.error(`❌ Failed to upload to Box: ${uploadResult.error}`);
+    }
   } catch (error) {
     console.error("Error running agent:", error);
   }

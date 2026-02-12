@@ -451,7 +451,7 @@ async function main() {
 
   // Show what the virtual filesystem looks like
   console.log("Virtual filesystem structure:");
-  console.log("  /docs/                    (Box)");
+  console.log(`  /docs/                    (Box "${DEFAULT_BOX_FOLDER_NAME}" folder)`);
   console.log("    ├── acme-corp/");
   console.log("    ├── nexus-health/");
   console.log("    ├── greenleaf-analytics/");

@@ -64,6 +64,11 @@ export class BoxBackend implements BackendProtocol {
     this.client = new BoxClient({ auth });
   }
 
+  /** Returns the current root folder ID (set after ensureRootFolder). */
+  getRootFolderId(): string {
+    return this.rootFolderId;
+  }
+
   /**
    * Find or create a named folder inside the current rootFolderId, then scope
    * the backend to that folder. Call this once before using the backend.
