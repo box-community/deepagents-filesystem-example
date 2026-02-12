@@ -119,6 +119,54 @@ export class BoxBackend implements BackendProtocol {
     return created.id;
   }
 
+  /**
+   * Recursively list the entire folder tree under rootFolderId and populate
+   * the path cache. Call once after ensureRootFolder() so that every subsequent
+   * resolvePath() is an instant cache hit with zero API calls.
+   */
+  async warmCache(): Promise<void> {
+    this.pathCache.clear();
+
+    const walk = async (folderId: string, prefix: string) => {
+      let marker: string | undefined;
+
+      do {
+        const items = await this.client.folders.getFolderItems(folderId, {
+          queryParams: {
+            usemarker: true,
+            marker,
+            limit: 1000,
+            fields: ["id", "name", "type"],
+          },
+        });
+
+        if (items.entries) {
+          const subfolderPromises: Promise<void>[] = [];
+
+          for (const item of items.entries) {
+            const name = (item as any).name || "";
+            const itemPath =
+              prefix === "/" ? "/" + name : prefix + "/" + name;
+            const itemType: "file" | "folder" =
+              item.type === "folder" ? "folder" : "file";
+
+            this.pathCache.set(itemPath, { id: item.id, type: itemType });
+
+            if (item.type === "folder") {
+              subfolderPromises.push(walk(item.id, itemPath));
+            }
+          }
+
+          await Promise.all(subfolderPromises);
+        }
+
+        marker = items.nextMarker ?? undefined;
+      } while (marker);
+    };
+
+    await walk(this.rootFolderId, "/");
+  }
+
   // ---------------------------------------------------------------------------
   // Path ↔ Box ID resolution
   // ---------------------------------------------------------------------------
@@ -433,9 +481,11 @@ export class BoxBackend implements BackendProtocol {
     }
 
     try {
-      // Get file metadata for timestamps
-      const fileInfo = await this.client.files.getFileById(resolved.id);
-      const content = await this.downloadFileContent(resolved.id);
+      // Get file metadata and content in parallel (independent requests)
+      const [fileInfo, content] = await Promise.all([
+        this.client.files.getFileById(resolved.id),
+        this.downloadFileContent(resolved.id),
+      ]);
 
       const createdAt = this.safeISODate(fileInfo.createdAt) ?? now;
       const modifiedAt = this.safeISODate(fileInfo.modifiedAt) ?? now;

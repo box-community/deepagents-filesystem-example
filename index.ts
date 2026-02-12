@@ -106,6 +106,7 @@ async function main() {
     developerToken: BOX_DEVELOPER_TOKEN,
   });
   await boxBackend.ensureRootFolder(DEFAULT_BOX_FOLDER_NAME);
+  await boxBackend.warmCache();
 
   // Create the model
   const model = new ChatAnthropic({
