@@ -14,20 +14,8 @@ import {
 } from "box-typescript-sdk-gen";
 import {
   readByteStream,
-} from "box-typescript-sdk-gen/lib/internal/utils.js";
-
-/**
- * Convert a string to a ReadableStream<Uint8Array> for Box SDK uploads.
- */
-function stringToStream(content: string): ReadableStream<Uint8Array> {
-  const bytes = new TextEncoder().encode(content);
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(bytes);
-      controller.close();
-    },
-  });
-}
+  stringToByteStream,
+} from "box-typescript-sdk-gen/internal";
 import type {
   BackendProtocol,
   FileData,
@@ -503,7 +491,7 @@ export class BoxBackend implements BackendProtocol {
     if (existing && existing.type === "file") {
       // Upload new version
       try {
-        const stream = stringToStream(content);
+        const stream = stringToByteStream(content);
         await this.client.uploads.uploadFileVersion(existing.id, {
           attributes: { name: filePath.split("/").pop()! },
           file: stream,
@@ -541,7 +529,7 @@ export class BoxBackend implements BackendProtocol {
     const [parentFolderId, fileName] = parentInfo;
 
     try {
-      const stream = stringToStream(content);
+      const stream = stringToByteStream(content);
       await this.client.uploads.uploadFile({
         attributes: {
           name: fileName,
@@ -637,7 +625,7 @@ export class BoxBackend implements BackendProtocol {
 
     // Upload as new version
     try {
-      const stream = stringToStream(newContent);
+      const stream = stringToByteStream(newContent);
       await this.client.uploads.uploadFileVersion(resolved.id, {
         attributes: { name: filePath.split("/").pop()! },
         file: stream,
