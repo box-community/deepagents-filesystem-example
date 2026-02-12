@@ -50,10 +50,13 @@ export class BoxBackend implements BackendProtocol {
   private rootFolderId: string;
   /** Maps virtual paths to Box IDs for fast repeated lookups */
   private pathCache: Map<string, CacheEntry>;
+  /** Caches downloaded file content by Box file ID to avoid redundant downloads */
+  private contentCache: Map<string, string>;
 
   constructor(options: BoxBackendOptions) {
     this.rootFolderId = options.rootFolderId || "0";
     this.pathCache = new Map();
+    this.contentCache = new Map();
 
     const auth = new BoxDeveloperTokenAuth({
       token: options.developerToken,
@@ -355,8 +358,11 @@ export class BoxBackend implements BackendProtocol {
    */
   private invalidateCache(pathPrefix: string): void {
     const normalized = this.normalizePath(pathPrefix);
-    for (const key of this.pathCache.keys()) {
+    for (const [key, entry] of this.pathCache.entries()) {
       if (key === normalized || key.startsWith(normalized + "/")) {
+        if (entry.type === "file") {
+          this.contentCache.delete(entry.id);
+        }
         this.pathCache.delete(key);
       }
     }
@@ -367,10 +373,15 @@ export class BoxBackend implements BackendProtocol {
   // ---------------------------------------------------------------------------
 
   private async downloadFileContent(fileId: string): Promise<string | null> {
+    const cached = this.contentCache.get(fileId);
+    if (cached !== undefined) return cached;
+
     const stream = await this.client.downloads.downloadFile(fileId);
     if (!stream) return null;
     const buffer = await readByteStream(stream);
-    return buffer.toString("utf-8");
+    const content = buffer.toString("utf-8");
+    this.contentCache.set(fileId, content);
+    return content;
   }
 
   // ---------------------------------------------------------------------------
@@ -799,13 +810,17 @@ export class BoxBackend implements BackendProtocol {
   /**
    * Recursively list all files under a virtual path.
    * Returns flat list with virtual paths and Box file IDs.
+   *
+   * When the path cache has been warmed, this is answered entirely from
+   * cache with zero API calls.
    */
   private async listAllFilesRecursive(
     path: string
   ): Promise<Array<{ path: string; id: string; size: number; modifiedAt?: string }>> {
-    const resolved = await this.resolvePath(path);
-    if (!resolved || resolved.type !== "folder") return [];
+    const normalized = this.normalizePath(path);
+    const prefix = normalized === "/" ? "/" : normalized + "/";
 
+    // Try to derive from cache (fast path — no API calls)
     const results: Array<{
       path: string;
       id: string;
@@ -813,7 +828,24 @@ export class BoxBackend implements BackendProtocol {
       modifiedAt?: string;
     }> = [];
 
-    const walk = async (folderId: string, prefix: string) => {
+    for (const [cachedPath, entry] of this.pathCache.entries()) {
+      if (entry.type === "file" && (cachedPath.startsWith(prefix) || (normalized === "/" && cachedPath.startsWith("/")))) {
+        results.push({
+          path: cachedPath,
+          id: entry.id,
+          size: 0,
+          modifiedAt: undefined,
+        });
+      }
+    }
+
+    if (results.length > 0) return results;
+
+    // Fallback: walk the tree via API (cold cache)
+    const resolved = await this.resolvePath(path);
+    if (!resolved || resolved.type !== "folder") return [];
+
+    const walk = async (folderId: string, walkPrefix: string) => {
       let marker: string | undefined;
 
       do {
@@ -832,7 +864,7 @@ export class BoxBackend implements BackendProtocol {
         if (items.entries) {
           for (const item of items.entries) {
             const name = (item as any).name || "";
-            const itemPath = prefix === "/" ? "/" + name : prefix + "/" + name;
+            const itemPath = walkPrefix === "/" ? "/" + name : walkPrefix + "/" + name;
 
             if (item.type === "folder") {
               await walk(item.id, itemPath);
@@ -851,7 +883,6 @@ export class BoxBackend implements BackendProtocol {
       } while (marker);
     };
 
-    const normalized = this.normalizePath(path);
     await walk(resolved.id, normalized);
     return results;
   }
