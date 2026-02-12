@@ -15,15 +15,9 @@ import { SQLiteBackend } from "./backends/sqlite-backend";
 
 // Configuration from environment
 const BOX_DEVELOPER_TOKEN = process.env.BOX_DEVELOPER_TOKEN;
-const BOX_CLIENT_ID = process.env.BOX_CLIENT_ID;
-const BOX_CLIENT_SECRET = process.env.BOX_CLIENT_SECRET;
-const BOX_USER_ID = process.env.BOX_USER_ID;
-const BOX_ENTERPRISE_ID = process.env.BOX_ENTERPRISE_ID;
 
-if (!BOX_DEVELOPER_TOKEN && (!BOX_CLIENT_ID || !BOX_CLIENT_SECRET)) {
-  console.error(
-    "Error: Either BOX_DEVELOPER_TOKEN, or BOX_CLIENT_ID + BOX_CLIENT_SECRET are required"
-  );
+if (!BOX_DEVELOPER_TOKEN) {
+  console.error("Error: BOX_DEVELOPER_TOKEN environment variable is required");
   process.exit(1);
 }
 
@@ -357,10 +351,6 @@ async function seedBox() {
 
   const boxBackend = new BoxBackend({
     developerToken: BOX_DEVELOPER_TOKEN,
-    clientId: BOX_CLIENT_ID,
-    clientSecret: BOX_CLIENT_SECRET,
-    userId: BOX_USER_ID,
-    enterpriseId: BOX_ENTERPRISE_ID,
   });
 
   // Find or create the "deep-agents-docs" folder in the user's Box root

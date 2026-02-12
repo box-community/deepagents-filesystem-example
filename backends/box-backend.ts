@@ -4,15 +4,13 @@
  * This backend stores files in Box, mapping filesystem-style operations
  * (ls, read, write, edit, grep, glob, delete) to Box API calls.
  *
- * Supports two authentication methods:
- *   1. Developer Token (simplest — great for development/demos)
- *   2. Client Credentials Grant (CCG — for production server-to-server)
+ * Authentication: Developer Token
+ *   Generate one from your Box Developer Console → Configuration → Developer Token.
+ *   Tokens expire after 60 minutes.
  */
 import {
   BoxClient,
-  BoxCcgAuth,
   BoxDeveloperTokenAuth,
-  CcgConfig,
 } from "box-typescript-sdk-gen";
 import {
   readByteStream,
@@ -42,20 +40,11 @@ import { minimatch } from "minimatch";
 
 export interface BoxBackendOptions {
   /**
-   * A Box Developer Token. When provided, this is used for authentication
-   * and clientId/clientSecret/userId/enterpriseId are ignored.
+   * A Box Developer Token used for authentication.
    * Generate one from your Box Developer Console → Configuration → Developer Token.
    * Tokens expire after 60 minutes.
    */
-  developerToken?: string;
-  /** Box application client ID (required for CCG auth) */
-  clientId?: string;
-  /** Box application client secret (required for CCG auth) */
-  clientSecret?: string;
-  /** Box user ID to authenticate as (CCG user-level auth) */
-  userId?: string;
-  /** Box enterprise ID to authenticate as service account (CCG enterprise-level auth) */
-  enterpriseId?: string;
+  developerToken: string;
   /** The Box folder ID that acts as the root for this backend (defaults to "0", the user's root) */
   rootFolderId?: string;
 }
@@ -78,27 +67,10 @@ export class BoxBackend implements BackendProtocol {
     this.rootFolderId = options.rootFolderId || "0";
     this.pathCache = new Map();
 
-    if (options.developerToken) {
-      // --- Developer Token auth (simplest) ---
-      const auth = new BoxDeveloperTokenAuth({
-        token: options.developerToken,
-      });
-      this.client = new BoxClient({ auth });
-    } else if (options.clientId && options.clientSecret) {
-      // --- CCG auth ---
-      const ccgConfig = new CcgConfig({
-        clientId: options.clientId,
-        clientSecret: options.clientSecret,
-        userId: options.userId,
-        enterpriseId: options.enterpriseId,
-      });
-      const auth = new BoxCcgAuth({ config: ccgConfig });
-      this.client = new BoxClient({ auth });
-    } else {
-      throw new Error(
-        "BoxBackend requires either a developerToken or clientId + clientSecret for authentication."
-      );
-    }
+    const auth = new BoxDeveloperTokenAuth({
+      token: options.developerToken,
+    });
+    this.client = new BoxClient({ auth });
   }
 
   /**

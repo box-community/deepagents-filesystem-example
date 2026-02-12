@@ -78,14 +78,7 @@ ANTHROPIC_API_KEY=
 BOX_DEVELOPER_TOKEN=
 ```
 
-That's all you need to get started. For long-lived production use with Client Credentials Grant (CCG), you can use these instead of a Developer Token:
-
-```bash
-BOX_CLIENT_ID=your-box-client-id
-BOX_CLIENT_SECRET=your-box-client-secret
-BOX_USER_ID=your-box-user-id
-# or BOX_ENTERPRISE_ID=your-box-enterprise-id
-```
+That's all you need to get started.
 
 ## Architecture
 
