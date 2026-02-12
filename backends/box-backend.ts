@@ -249,8 +249,6 @@ export class BoxBackend implements BackendProtocol {
             const itemId = item.id;
 
             // Cache every item we encounter for future lookups
-            const itemPath = currentPath.slice(0, currentPath.lastIndexOf("/") + 1) +
-              (itemName || "");
             if (itemName) {
               // Build the full path for caching
               const fullItemPath =
@@ -282,8 +280,7 @@ export class BoxBackend implements BackendProtocol {
         marker = items.nextMarker ?? undefined;
       } while (!found && marker);
 
-      if (!found && !isLast) return null;
-      if (!found && isLast) return null;
+      if (!found) return null;
     }
 
     return null;
