@@ -1,6 +1,6 @@
-# Deep Agents Virtual Filesystem Example
+# LangChain Deep Agents Filesystem Backend Example (Box Implementation)
 
-This example demonstrates how to use **Deep Agents** with multiple storage backends, showcasing the power of virtual filesystems for AI agents.
+This example demonstrates how to implement LangChain [Deep Agents](https://docs.langchain.com/oss/python/deepagents/overview) storage [backends](https://docs.langchain.com/oss/javascript/deepagents/backends), showcasing how virtual filesystems allow agents to route operations across Box, SQLite, and the local filesystem.
 
 ## Demo
 
