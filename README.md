@@ -225,6 +225,10 @@ Add a new user object to the `USERS` array in `seed.ts`:
 
 Then run `bun run seed`.
 
+## Attribution
+
+Based on the [original work](https://github.com/christian-bromann/deepagents-filesystem-example) by [Christian Bromann](https://github.com/christian-bromann).
+
 ## License
 
 MIT
