@@ -2,6 +2,13 @@
 
 This example demonstrates how to use **Deep Agents** with multiple storage backends, showcasing the power of virtual filesystems for AI agents.
 
+## Demo
+
+![Box Deep Agents Demo](./assets/demo.gif)
+
+Running `bun run seed` populates Box with sample documents.
+Running `bun run start` generates a personalized proposal and uploads it back to Box.
+
 ## Overview
 
 The agent acts as a sales assistant that can:
