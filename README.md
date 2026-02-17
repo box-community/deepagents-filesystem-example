@@ -187,6 +187,61 @@ deepagent-filesystem-example/
 
 4. **Output**: The agent writes the generated proposal to `/workspace/`.
 
+## Filesystem Operations → Box API Mapping
+
+The Deep Agent interacts with a virtual filesystem using standard
+operations like:
+
+- `ls`
+- `read_file`
+- `write_file`
+
+It does **not** call the Box API directly.
+
+Instead, the `BoxBackend` translates filesystem operations into Box API
+calls behind the scenes.
+
+### `/docs/*` → Box Backend
+
+| Filesystem Operation        | What the Agent Does        | Box API Endpoint               |
+|----------------------------|----------------------------|--------------------------------|
+| `ls /docs/`                | List directory contents    | `GET /folders/:id/items`       |
+| `read /docs/file.md`       | Read file contents         | `GET /files/:id/content`       |
+| `write /docs/file.md`      | Create new file            | `POST /files/content`          |
+| `write` (existing file)    | Upload new version         | `POST /files/:id/content`      |
+
+
+### Example: Read File
+
+When the agent runs:
+
+```
+read_file("/docs/pricing.md")
+```
+
+The backend:
+
+1. Resolves the virtual path to a Box file ID
+2. Calls `GET /files/:id/content`
+3. Returns the file contents to the agent
+
+The agent never sees file IDs or API calls — only file contents.
+
+### Example: Versioned Write
+
+If the agent writes to an existing file, the backend uploads a new
+version:
+
+```
+POST /files/:id/content
+```
+
+This ensures agent-generated artifacts automatically inherit:
+
+-  Version history
+-  Permission enforcement
+-  Auditability
+
 ## Customization
 
 ### Add a New Company
