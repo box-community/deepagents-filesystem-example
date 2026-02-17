@@ -205,10 +205,10 @@ calls behind the scenes.
 
 | Filesystem Operation        | What the Agent Does        | Box API Endpoint               |
 |----------------------------|----------------------------|--------------------------------|
-| `ls /docs/`                | List directory contents    | `GET /folders/:id/items`       |
-| `read /docs/file.md`       | Read file contents         | `GET /files/:id/content`       |
-| `write /docs/file.md`      | Create new file            | `POST /files/content`          |
-| `write` (existing file)    | Upload new version         | `POST /files/:id/content`      |
+| `ls /docs/`                | List directory contents    | `GET/folders/{folder_id}/items`       |
+| `read /docs/file.md`       | Read file contents         | `GET/files/{file_id}`       |
+| `write /docs/file.md`      | Create new file            | `POST/files/content`          |
+| `write` (existing file)    | Upload new version         | `POST/files/{file_id}/content`      |
 
 
 ### Example: Read File
